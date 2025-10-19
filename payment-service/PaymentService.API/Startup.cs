@@ -15,13 +15,9 @@ public static class Startup
         builder.Services.AddHttpContextAccessor();
 
         builder.Services.Configure<AppOptions>(configuration.GetSection(nameof(AppOptions)));
-        builder.Services.Configure<PostgresOptions>(configuration.GetSection(nameof(PostgresOptions)));
-        builder.Services.AddSingleton(sp =>
-            sp.GetRequiredService<IOptions<PostgresOptions>>().Value);
 
         builder.Services.AddScoped<ICurrentUserProvider, CurrentUserProvider>();
         builder.AddCustomDbContext<PaymentDbContext>();
-
 
         return builder;
     }
