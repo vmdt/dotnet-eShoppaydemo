@@ -9,40 +9,41 @@ using Microsoft.EntityFrameworkCore.Query;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace BuildingBlocks.Core.EFCore;
 
 public static class Extensions
 {
-    public static IServiceCollection AddCustomDbContext<TContext>(this WebApplicationBuilder builder, string? connectionName = "")
+    public static IServiceCollection AddCustomDbContext<TContext>(this WebApplicationBuilder builder, string? dbOptionName = "Database")
         where TContext : DbContext, IDbContext
     {
-        AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
+        builder.Services.AddOptions<DbOptions>().BindConfiguration(dbOptionName).ValidateDataAnnotations().ValidateOnStart();
+        builder.Services.AddSingleton(sp =>
+            sp.GetRequiredService<IOptions<DbOptions>>().Value);
 
-        builder.Services.AddOptions<PostgresOptions>().ValidateDataAnnotations().ValidateOnStart();
         builder.Services.AddDbContext<TContext>(
             (sp, options) =>
             {
-                var aspireConnectionString = builder.Configuration.GetConnectionString(connectionName.Kebaberize());
-                var connectionString = aspireConnectionString ?? sp.GetRequiredService<PostgresOptions>().ConnectionString;
+                var dbOptions = sp.GetRequiredService<DbOptions>();
+                var connectionString = dbOptions.ConnectionString;
 
-                ArgumentException.ThrowIfNullOrEmpty(connectionString);
+                switch (dbOptions.Provider.ToLowerInvariant())
+                {
+                    case "postgres":
+                        options.UseNpgsql(connectionString);
+                        break;
+                    case "sqlserver":
+                        options.UseSqlServer(connectionString);
+                        break;
+                }
 
-                options.UseNpgsql(
-                        connectionString,
-                        dbOptions =>
-                        {
-                            dbOptions.MigrationsAssembly(typeof(TContext).Assembly.GetName().Name);
-                        })
-                    .UseSnakeCaseNamingConvention();
-
-                // Suppress warnings for pending model changes
+                options.UseSnakeCaseNamingConvention();
                 options.ConfigureWarnings(
                     w => w.Ignore(RelationalEventId.PendingModelChangesWarning));
-            });
-
-        builder.Services.AddScoped<IDbContext>(sp => sp.GetRequiredService<TContext>());
-
+            }
+        );
+        builder.Services.AddScoped<IDbContext>(provider => provider.GetService<TContext>()!);
 
         return builder.Services;
     }
@@ -110,13 +111,13 @@ public static class Extensions
         var pendingMigrations = await context.Database.GetPendingMigrationsAsync();
         
 
-        // if (pendingMigrations.Any())
-        // {
+        if (pendingMigrations.Any())
+        {
         logger.LogInformation("Applying {Count} pending migrations...", pendingMigrations.Count());
 
             await context.Database.MigrateAsync();
             logger.LogInformation("Migrations applied successfully.");
-        // }
+        }
     }
 
     public static IApplicationBuilder UseMigration<TContext>(this IApplicationBuilder app)
