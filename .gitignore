@@ -35,3 +35,5 @@ TestResults/
 
 # Publish output
 publish/
+
+.vs/
